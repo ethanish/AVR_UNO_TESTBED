@@ -11,6 +11,11 @@ TARGET=main
 
 all: $(TARGET).hex
 
+build: all
+
+test:
+	@echo "[P0] no automated tests yet"
+
 $(TARGET).elf: $(TARGET).c
 	$(CC) $(CFLAGS) -o $@ $<
 

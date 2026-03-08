@@ -1,0 +1,17 @@
+Docs/
+
+# Make / AVR build outputs
+*.o
+*.d
+*.elf
+*.hex
+*.eep
+*.map
+*.lst
+*.lss
+*.sym
+*.bin
+
+# Common build directories
+build/
+out/
