@@ -26,6 +26,13 @@
 - `tests/`: 테스트 러너 + 케이스
 - `docs/`: 프로토콜/테스트 문서
 
+## 공통 레이어 (계승 기반)
+P1은 `Tutorials/common/firmware`의 공통 모듈을 사용합니다.
+- `uart_ring.c/.h`: UART RX ISR 링버퍼 + TX helper
+- `cmd_line.c/.h`: 라인 단위 명령 파싱
+
+P2/P3는 같은 모듈을 재사용하므로, UART/CLI 동작 규칙이 프로젝트 간 일관되게 유지됩니다.
+
 ## UART 동작 원리 (현재 구조 기준)
 ### 1) 초기화 단계
 - `uart_init()`에서 UART를 115200 baud, 8N1로 설정합니다.
@@ -97,3 +104,10 @@ make -C Tutorials/P1 test-polling-hw PORT=/dev/tty.usbmodemXXXX
 python3 Tutorials/P1/tests/polling_testbed.py --port /dev/tty.usbmodemXXXX --auto-poll-status
 ```
 - `q` 또는 `quit`로 종료
+
+## AVR Libraries
+> [avr/io.h](https://github.com/vancegroup-mirrors/avr-libc/blob/master/avr-libc/include/avr/io.h)
+
+> [avr/sfr_defs.h](https://github.com/vancegroup-mirrors/avr-libc/blob/master/avr-libc/include/avr/sfr_defs.h)
+
+> [avr/iom328p.h](https://github.com/vancegroup-mirrors/avr-libc/blob/master/avr-libc/include/avr/iom328p.h)

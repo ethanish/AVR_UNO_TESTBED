@@ -12,8 +12,10 @@ UPLOAD_BAUD?=115200
 TARGET=p1
 FW_DIR=firmware
 BUILD_DIR=out
+COMMON_FW_DIR=../common/firmware
 ELF=$(BUILD_DIR)/$(TARGET).elf
 HEX=$(BUILD_DIR)/$(TARGET).hex
+SRCS=$(FW_DIR)/main.c $(COMMON_FW_DIR)/uart_ring.c $(COMMON_FW_DIR)/cmd_line.c
 
 .PHONY: all build flash test test-hw test-polling-hw clean
 
@@ -24,8 +26,8 @@ build: $(HEX)
 $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)
 
-$(ELF): $(FW_DIR)/main.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -o $@ $<
+$(ELF): $(SRCS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -o $@ $(SRCS)
 
 $(HEX): $(ELF)
 	$(OBJCOPY) -O ihex -R .eeprom $< $@

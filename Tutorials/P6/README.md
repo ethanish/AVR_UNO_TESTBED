@@ -8,7 +8,15 @@ Design a robust fail-safe path with watchdog reset handling and fault context lo
 - Error classification and safe fallback
 - Reset-cause reporting and minimal crash dump
 
-## Structure
-- `firmware/`: AVR firmware source
-- `tests/`: Fault injection and recovery checks
-- `docs/`: Reset policy and error taxonomy
+## Inheritance Base (from P1/P2)
+P6 is pre-wired to use `Tutorials/common/firmware`:
+- `uart_ring.c/.h` (UART RX ISR ring buffer)
+- `cmd_line.c/.h` (line command parser)
+
+Current scaffold commands:
+- `PING`, `HELP`, `VERSION`, `GET STAT`
+
+## Build/Test
+```bash
+make -C Tutorials/P6 build test
+```
