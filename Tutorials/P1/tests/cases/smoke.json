@@ -1,6 +1,6 @@
 {
   "cases": [
-    {"name": "ping", "send": "PING", "expect_prefix": "OK PONG"},
+    {"name": "ping", "send": "PING", "expect_prefix": "PONG"},
     {"name": "help", "send": "HELP", "expect_prefix": "OK CMDS="},
     {"name": "version", "send": "VERSION", "expect_prefix": "OK VERSION="},
 
@@ -14,7 +14,7 @@
 
     {"name": "get-adc", "send": "GET ADC 0", "expect_prefix": "OK ADC="},
     {"name": "get-adc-range-error", "send": "GET ADC 9", "expect_prefix": "ERR BAD_RANGE"},
-    {"name": "get-stat", "send": "GET STAT", "expect_prefix": "OK IRQ="},
+    {"name": "get-stat", "send": "GET STAT", "expect_prefix": "OK UART_RX_ISR="},
 
     {"name": "unknown-command", "send": "NOPE", "expect_prefix": "ERR BAD_CMD"}
   ]

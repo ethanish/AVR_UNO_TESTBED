@@ -13,7 +13,7 @@
 
 ## Commands
 - `PING`
-  - Response: `OK PONG`
+  - Response: `PONG`
 - `HELP`
   - Response: `OK CMDS=PING,HELP,VERSION,SET,GET (GET: LED,PWM,ADC,STAT)`
 - `VERSION`
@@ -29,7 +29,7 @@
 - `GET ADC <0..5>`
   - Response: `OK ADC=<0..1023>`
 - `GET STAT`
-  - Response: `OK IRQ=<count>`
+  - Response: `OK UART_RX_ISR=<count>`
 
 ## Error Codes
 - `BAD_CMD`: unknown command

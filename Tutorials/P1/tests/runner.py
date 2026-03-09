@@ -38,7 +38,7 @@ class MockDevice:
         cmd = parts[0]
 
         if cmd == "PING":
-            return "OK PONG"
+            return "PONG"
         if cmd == "HELP":
             return "OK CMDS=PING,HELP,VERSION,SET,GET (GET: LED,PWM,ADC,STAT)"
         if cmd == "VERSION":
@@ -84,7 +84,7 @@ class MockDevice:
                     return "ERR BAD_RANGE"
                 return "OK ADC=512"
             if target == "STAT":
-                return "OK IRQ=42"
+                return "OK UART_RX_ISR=42"
             return "ERR BAD_TARGET"
 
         return "ERR BAD_CMD"

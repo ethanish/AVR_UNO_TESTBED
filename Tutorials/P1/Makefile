@@ -15,7 +15,7 @@ BUILD_DIR=out
 ELF=$(BUILD_DIR)/$(TARGET).elf
 HEX=$(BUILD_DIR)/$(TARGET).hex
 
-.PHONY: all build flash test test-hw clean
+.PHONY: all build flash test test-hw test-polling-hw clean
 
 all: build
 
@@ -38,6 +38,9 @@ test:
 
 test-hw:
 	python3 tests/runner.py --port $(PORT) tests/cases/smoke.json
+
+test-polling-hw:
+	python3 tests/polling_testbed.py --port $(PORT)
 
 clean:
 	rm -rf $(BUILD_DIR)

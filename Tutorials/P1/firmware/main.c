@@ -20,7 +20,7 @@ static volatile uint8_t rx_buf[RX_BUF_SIZE];
 static volatile uint8_t rx_head = 0;
 static volatile uint8_t rx_tail = 0;
 static volatile bool rx_overflow = false;
-static volatile uint16_t irq_counter = 0;
+static volatile uint16_t uart_rx_isr_count = 0;
 
 static uint8_t led_state = 0;
 static uint8_t pwm_duty = 0;
@@ -68,7 +68,7 @@ ISR(USART_RX_vect) {
         rx_overflow = true;
         return;
     }
-    irq_counter += 1;
+    uart_rx_isr_count += 1;
     rx_buf[rx_head] = data;
     rx_head = next_head;
 }
@@ -121,10 +121,10 @@ static void respond_err(const char *code) {
     uart_writeln(msg);
 }
 
-static uint16_t irq_counter_snapshot(void) {
+static uint16_t uart_rx_isr_count_snapshot(void) {
     uint16_t snap;
     ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-        snap = irq_counter;
+        snap = uart_rx_isr_count;
     }
     return snap;
 }
@@ -144,7 +144,7 @@ static void handle_command(char *line) {
     }
 
     if (strcmp(argv[0], "PING") == 0) {
-        uart_writeln("OK PONG");
+        uart_writeln("PONG");
         return;
     }
 
@@ -228,7 +228,7 @@ static void handle_command(char *line) {
         }
 
         if (strcmp(argv[1], "STAT") == 0) {
-            respond_ok_kv("IRQ", irq_counter_snapshot());
+            respond_ok_kv("UART_RX_ISR", uart_rx_isr_count_snapshot());
             return;
         }
 
