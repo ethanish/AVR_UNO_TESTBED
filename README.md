@@ -40,4 +40,5 @@ This repository follows the practical roadmap summarized from `Docs/deepresearch
 ## Directory Layout
 
 - `Tutorials/P0/`: existing baseline code
+- `Tutorials/common/firmware/`: shared UART/CLI layer inherited by P1/P2/P3
 - `Tutorials/P1/` to `Tutorials/P8/`: per-project folders with `README.md`, `firmware/`, `tests/`, `docs/`
