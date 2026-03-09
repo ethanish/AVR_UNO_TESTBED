@@ -2,7 +2,6 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,34 +11,7 @@
 #include "../../common/firmware/uart_ring.h"
 
 #define BAUD 115200UL
-#define TX_BUF_SIZE 64
 #define CMD_BUF_SIZE 64
-
-static uint8_t led_state = 0;
-static uint8_t pwm_duty = 0;
-
-static void io_init(void) {
-    DDRB |= _BV(PB5);
-}
-
-static void led_apply(void) {
-    if (led_state) {
-        PORTB |= _BV(PB5);
-    } else {
-        PORTB &= (uint8_t)~_BV(PB5);
-    }
-}
-
-static void pwm_init(void) {
-    DDRD |= _BV(PD3);
-    TCCR2A = _BV(COM2B1) | _BV(WGM21) | _BV(WGM20);
-    TCCR2B = _BV(CS21);
-    OCR2B = pwm_duty;
-}
-
-static void pwm_apply(void) {
-    OCR2B = pwm_duty;
-}
 
 static void adc_init(void) {
     ADMUX = _BV(REFS0);
@@ -54,15 +26,15 @@ static uint16_t adc_read(uint8_t channel) {
     return ADC;
 }
 
-static void respond_ok_kv(const char *k, uint16_t v) {
-    char msg[TX_BUF_SIZE];
+static void respond_ok_u16(const char *k, uint16_t v) {
+    char msg[80];
     snprintf(msg, sizeof(msg), "OK %s=%u", k, v);
     uart_writeln(msg);
 }
 
-static void respond_err(const char *code) {
-    char msg[TX_BUF_SIZE];
-    snprintf(msg, sizeof(msg), "ERR %s", code);
+static void respond_err(const char *e) {
+    char msg[80];
+    snprintf(msg, sizeof(msg), "ERR %s", e);
     uart_writeln(msg);
 }
 
@@ -86,48 +58,12 @@ static void handle_command(char *line) {
     }
 
     if (strcmp(argv[0], "HELP") == 0) {
-        uart_writeln("OK CMDS=PING,HELP,VERSION,SET,GET (GET: LED,PWM,ADC,STAT)");
+        uart_writeln("OK CMDS=PING,HELP,VERSION,GET (GET: ADC,STAT)");
         return;
     }
 
     if (strcmp(argv[0], "VERSION") == 0) {
-        uart_writeln("OK VERSION=P1-1.0");
-        return;
-    }
-
-    if (strcmp(argv[0], "SET") == 0) {
-        long val;
-
-        if (argc < 3U) {
-            respond_err("BAD_ARG");
-            return;
-        }
-
-        val = strtol(argv[2], NULL, 10);
-
-        if (strcmp(argv[1], "LED") == 0) {
-            if (!(val == 0L || val == 1L)) {
-                respond_err("BAD_RANGE");
-                return;
-            }
-            led_state = (uint8_t)val;
-            led_apply();
-            respond_ok_kv("LED", led_state);
-            return;
-        }
-
-        if (strcmp(argv[1], "PWM") == 0) {
-            if (val < 0L || val > 255L) {
-                respond_err("BAD_RANGE");
-                return;
-            }
-            pwm_duty = (uint8_t)val;
-            pwm_apply();
-            respond_ok_kv("PWM", pwm_duty);
-            return;
-        }
-
-        respond_err("BAD_TARGET");
+        uart_writeln("OK VERSION=P3-0.1");
         return;
     }
 
@@ -137,35 +73,23 @@ static void handle_command(char *line) {
             return;
         }
 
-        if (strcmp(argv[1], "LED") == 0) {
-            respond_ok_kv("LED", led_state);
-            return;
-        }
-
-        if (strcmp(argv[1], "PWM") == 0) {
-            respond_ok_kv("PWM", pwm_duty);
-            return;
-        }
-
         if (strcmp(argv[1], "ADC") == 0) {
             long ch;
             if (argc < 3U) {
                 respond_err("BAD_ARG");
                 return;
             }
-
             ch = strtol(argv[2], NULL, 10);
             if (ch < 0L || ch > 5L) {
                 respond_err("BAD_RANGE");
                 return;
             }
-
-            respond_ok_kv("ADC", adc_read((uint8_t)ch));
+            respond_ok_u16("ADC", adc_read((uint8_t)ch));
             return;
         }
 
         if (strcmp(argv[1], "STAT") == 0) {
-            respond_ok_kv("UART_RX_ISR", uart_rx_isr_count_snapshot());
+            respond_ok_u16("UART_RX_ISR", uart_rx_isr_count_snapshot());
             return;
         }
 
@@ -180,15 +104,11 @@ int main(void) {
     char cmd_buf[CMD_BUF_SIZE];
     uint8_t cmd_len = 0;
 
-    io_init();
-    pwm_init();
     adc_init();
     uart_init(BAUD);
-    led_apply();
-    pwm_apply();
-
     sei();
-    uart_writeln("OK BOOT=P1");
+
+    uart_writeln("OK BOOT=P3");
 
     while (1) {
         cmd_line_result_t r;
