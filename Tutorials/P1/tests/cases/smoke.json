@@ -1,0 +1,21 @@
+{
+  "cases": [
+    {"name": "ping", "send": "PING", "expect_prefix": "OK PONG"},
+    {"name": "help", "send": "HELP", "expect_prefix": "OK CMDS="},
+    {"name": "version", "send": "VERSION", "expect_prefix": "OK VERSION="},
+
+    {"name": "set-led-on", "send": "SET LED 1", "expect_prefix": "OK LED=1"},
+    {"name": "get-led", "send": "GET LED", "expect_prefix": "OK LED=1"},
+    {"name": "set-led-range-error", "send": "SET LED 2", "expect_prefix": "ERR BAD_RANGE"},
+
+    {"name": "set-pwm", "send": "SET PWM 200", "expect_prefix": "OK PWM=200"},
+    {"name": "get-pwm", "send": "GET PWM", "expect_prefix": "OK PWM=200"},
+    {"name": "set-pwm-range-error", "send": "SET PWM 300", "expect_prefix": "ERR BAD_RANGE"},
+
+    {"name": "get-adc", "send": "GET ADC 0", "expect_prefix": "OK ADC="},
+    {"name": "get-adc-range-error", "send": "GET ADC 9", "expect_prefix": "ERR BAD_RANGE"},
+    {"name": "get-stat", "send": "GET STAT", "expect_prefix": "OK IRQ="},
+
+    {"name": "unknown-command", "send": "NOPE", "expect_prefix": "ERR BAD_CMD"}
+  ]
+}
