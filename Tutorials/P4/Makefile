@@ -17,7 +17,7 @@ ELF=$(BUILD_DIR)/$(TARGET).elf
 HEX=$(BUILD_DIR)/$(TARGET).hex
 SRCS=$(FW_DIR)/main.c $(COMMON_FW_DIR)/uart_ring.c $(COMMON_FW_DIR)/cmd_line.c
 
-.PHONY: all build flash test clean
+.PHONY: all build flash test test-hw clean
 
 all: build
 
@@ -37,6 +37,9 @@ flash: $(HEX)
 
 test:
 	python3 tests/p4_logic_test.py
+
+test-hw:
+	python3 tests/p4_interactive_testbed.py --port $(PORT) --auto-refresh-status
 
 clean:
 	rm -rf $(BUILD_DIR)
