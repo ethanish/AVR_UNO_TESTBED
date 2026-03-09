@@ -1,0 +1,11 @@
+P1 TEST REPORT (sample)
+
+Date: 2026-03-09
+Mode: mock
+Case file: tests/cases/smoke.json
+
+Result: 12/12 passed
+
+Notes:
+- Serial hardware run should use `make test-hw PORT=/dev/tty.usbmodemXXXX`.
+- In hardware mode, `GET ADC 0` value varies by input level.

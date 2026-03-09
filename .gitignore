@@ -1,4 +1,5 @@
-Docs/
+/Docs/
+/DOCS/
 
 # Make / AVR build outputs
 *.o
