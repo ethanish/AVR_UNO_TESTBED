@@ -17,7 +17,7 @@ IOLIB_DIR=../common/ioLibrary_Driver
 ELF=$(BUILD_DIR)/$(TARGET).elf
 HEX=$(BUILD_DIR)/$(TARGET).hex
 CFLAGS+=-D_WIZCHIP_=W5100S -DDATA_BUF_SIZE=128 -I$(IOLIB_DIR)/Ethernet -I$(IOLIB_DIR)/Application/loopback
-SRCS=$(FW_DIR)/main.c $(FW_DIR)/netconfig.c \
+SRCS=$(FW_DIR)/main.c $(FW_DIR)/netconfig.c $(FW_DIR)/wizchip_port.c \
 	$(IOLIB_DIR)/Ethernet/socket.c $(IOLIB_DIR)/Ethernet/wizchip_conf.c \
 	$(IOLIB_DIR)/Ethernet/W5100S/w5100s.c
 
