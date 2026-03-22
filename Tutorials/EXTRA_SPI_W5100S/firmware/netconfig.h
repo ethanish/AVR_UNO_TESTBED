@@ -1,59 +1,10 @@
 #ifndef NETCONFIG_H
 #define NETCONFIG_H
 
-#include <avr/io.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
-#endif
-
-#ifndef NETCONFIG_SPI_CS_DDR
-#define NETCONFIG_SPI_CS_DDR DDRB
-#endif
-
-#ifndef NETCONFIG_SPI_CS_PORT
-#define NETCONFIG_SPI_CS_PORT PORTB
-#endif
-
-#ifndef NETCONFIG_SPI_CS_BIT
-#define NETCONFIG_SPI_CS_BIT PB2
-#endif
-
-#ifndef NETCONFIG_SPI_MOSI_DDR
-#define NETCONFIG_SPI_MOSI_DDR DDRB
-#endif
-
-#ifndef NETCONFIG_SPI_MOSI_BIT
-#define NETCONFIG_SPI_MOSI_BIT PB3
-#endif
-
-#ifndef NETCONFIG_SPI_MISO_DDR
-#define NETCONFIG_SPI_MISO_DDR DDRB
-#endif
-
-#ifndef NETCONFIG_SPI_MISO_BIT
-#define NETCONFIG_SPI_MISO_BIT PB4
-#endif
-
-#ifndef NETCONFIG_SPI_SCK_DDR
-#define NETCONFIG_SPI_SCK_DDR DDRB
-#endif
-
-#ifndef NETCONFIG_SPI_SCK_BIT
-#define NETCONFIG_SPI_SCK_BIT PB5
-#endif
-
-#ifndef NETCONFIG_INT_DDR
-#define NETCONFIG_INT_DDR DDRD
-#endif
-
-#ifndef NETCONFIG_INT_PORT
-#define NETCONFIG_INT_PORT PORTD
-#endif
-
-#ifndef NETCONFIG_INT_BIT
-#define NETCONFIG_INT_BIT PD2
 #endif
 
 #define NETCONFIG_OK 0
@@ -65,6 +16,8 @@ extern "C" {
 #define NETCONFIG_LINK_UP 1U
 #define NETCONFIG_LOOPBACK_SOCKET 0U
 #define NETCONFIG_LOOPBACK_PORT 5000U
+#define NETCONFIG_SERVICE_NONE 0U
+#define NETCONFIG_SERVICE_TCP_LOOPBACK 1U
 
 typedef struct {
     uint8_t mac[6];
@@ -77,16 +30,20 @@ typedef struct {
 
 typedef struct {
     uint8_t enabled;
+    uint8_t service_type;
     uint8_t socket_num;
     uint8_t socket_state;
     uint16_t port;
     int32_t last_result;
-} netconfig_loopback_status_t;
+} netconfig_service_status_t;
+
+typedef netconfig_service_status_t netconfig_loopback_status_t;
 
 extern const netconfig_info_t netconfig_default_info;
 
 void netconfig_spi_init(void);
 void netconfig_wizchip_if_init(void);
+void netconfig_enable_global_interrupts(void);
 int8_t netconfig_chip_init(const netconfig_info_t *netinfo);
 void netconfig_cs_select(void);
 void netconfig_cs_deselect(void);
@@ -98,6 +55,10 @@ void netconfig_get_info(netconfig_info_t *netinfo);
 uint8_t netconfig_reg_read(uint16_t addr);
 void netconfig_reg_write(uint16_t addr, uint8_t value);
 void netconfig_reg_read_buf(uint16_t addr, uint8_t *buf, uint8_t len);
+int8_t netconfig_service_start(uint8_t sn, uint8_t service_type, uint16_t port);
+void netconfig_service_stop(uint8_t sn);
+void netconfig_poll(void);
+void netconfig_get_status(uint8_t sn, netconfig_service_status_t *status);
 int8_t netconfig_loopback_start(uint16_t port);
 void netconfig_loopback_stop(void);
 void netconfig_loopback_poll(void);

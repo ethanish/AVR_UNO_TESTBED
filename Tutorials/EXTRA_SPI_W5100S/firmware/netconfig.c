@@ -1,6 +1,6 @@
 #include "netconfig.h"
+#include "wizchip_port.h"
 
-#include <avr/interrupt.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -16,18 +16,17 @@ const netconfig_info_t netconfig_default_info = {
     .dhcp = NETINFO_STATIC,
 };
 
-static uint8_t netconfig_sreg = 0U;
-static volatile uint32_t netconfig_spi_xfer_count = 0U;
 static const uint8_t netconfig_tx_memsize[4] = {2, 2, 2, 2};
 static const uint8_t netconfig_rx_memsize[4] = {2, 2, 2, 2};
 static uint8_t netconfig_loopback_buf[DATA_BUF_SIZE];
-static uint8_t netconfig_loopback_enabled = 0U;
-static uint16_t netconfig_loopback_port = NETCONFIG_LOOPBACK_PORT;
-static int32_t netconfig_loopback_last_result = 0;
 static uint8_t netconfig_interrupt_ready = 0U;
-static volatile uint8_t netconfig_wiznet_irq_pending = 0U;
+static uint8_t netconfig_poll_cursor = 0U;
 
 typedef struct {
+    uint8_t enabled;
+    uint8_t service_type;
+    uint16_t port;
+    int32_t last_result;
     uint16_t rx_len;
     uint16_t reply_len;
     uint16_t reply_offset;
@@ -73,6 +72,20 @@ static void netconfig_reset_socket_ctx(uint8_t sn) {
         return;
     }
 
+    ctx->enabled = 0U;
+    ctx->service_type = NETCONFIG_SERVICE_NONE;
+    ctx->port = 0U;
+    ctx->last_result = 0;
+    ctx->rx_len = 0U;
+    ctx->reply_len = 0U;
+    ctx->reply_offset = 0U;
+}
+
+static void netconfig_clear_socket_runtime(netconfig_socket_ctx_t *ctx) {
+    if (ctx == 0) {
+        return;
+    }
+
     ctx->rx_len = 0U;
     ctx->reply_len = 0U;
     ctx->reply_offset = 0U;
@@ -87,7 +100,7 @@ static void netconfig_reset_socket_reply(netconfig_socket_ctx_t *ctx) {
     ctx->reply_offset = 0U;
 }
 
-static uint16_t netconfig_prepare_reply(uint8_t *buf, uint16_t len) {
+static uint16_t netconfig_prepare_reply(uint8_t *buf, uint16_t len, uint16_t port) {
     netconfig_info_t info;
     int written;
 
@@ -105,7 +118,7 @@ static uint16_t netconfig_prepare_reply(uint8_t *buf, uint16_t len) {
                            info.ip[1],
                            info.ip[2],
                            info.ip[3],
-                           netconfig_loopback_port);
+                           port);
         if (written < 0) {
             return 0U;
         }
@@ -171,7 +184,7 @@ static uint16_t netconfig_extract_reply_from_rx(netconfig_socket_ctx_t *ctx) {
 
     if (netconfig_find_line_end(ctx, &line_len) == 0U) {
         if (ctx->rx_len >= DATA_BUF_SIZE) {
-            reply_len = netconfig_prepare_reply(ctx->rx_buf, ctx->rx_len);
+            reply_len = netconfig_prepare_reply(ctx->rx_buf, ctx->rx_len, ctx->port);
             if (reply_len > 0U) {
                 memcpy(ctx->reply_buf, ctx->rx_buf, reply_len);
             }
@@ -183,7 +196,7 @@ static uint16_t netconfig_extract_reply_from_rx(netconfig_socket_ctx_t *ctx) {
 
     raw_line_len = (uint16_t)(line_len + 1U);
     line_len = netconfig_trim_line_len(ctx->rx_buf, line_len);
-    reply_len = netconfig_prepare_reply(ctx->rx_buf, line_len);
+    reply_len = netconfig_prepare_reply(ctx->rx_buf, line_len, ctx->port);
     if (reply_len > 0U) {
         memcpy(ctx->reply_buf, ctx->rx_buf, reply_len);
     }
@@ -204,7 +217,7 @@ static uint16_t netconfig_queue_reply_from_rx(uint8_t sn) {
     return ctx->reply_len;
 }
 
-static int32_t netconfig_service_tcp_server(uint8_t sn, uint16_t port) {
+static int32_t netconfig_service_tcp_server(uint8_t sn) {
     int32_t ret;
     uint16_t recv_size;
     uint16_t send_size;
@@ -234,7 +247,7 @@ static int32_t netconfig_service_tcp_server(uint8_t sn, uint16_t port) {
 
                 ret = send(sn, ctx->reply_buf + ctx->reply_offset, send_size);
                 if (ret < 0) {
-                    netconfig_reset_socket_ctx(sn);
+                    netconfig_clear_socket_runtime(ctx);
                     close(sn);
                     return ret;
                 }
@@ -281,7 +294,7 @@ static int32_t netconfig_service_tcp_server(uint8_t sn, uint16_t port) {
 
         if (socket_state == SOCK_CLOSE_WAIT) {
             if (ctx->reply_len == 0U && ctx->rx_len == 0U) {
-                netconfig_reset_socket_ctx(sn);
+                netconfig_clear_socket_runtime(ctx);
                 ret = disconnect(sn);
                 return ret;
             }
@@ -294,8 +307,8 @@ static int32_t netconfig_service_tcp_server(uint8_t sn, uint16_t port) {
         return ret;
 
     case SOCK_CLOSED:
-        netconfig_reset_socket_ctx(sn);
-        ret = socket(sn, Sn_MR_TCP, port, 0x00);
+        netconfig_clear_socket_runtime(ctx);
+        ret = socket(sn, Sn_MR_TCP, ctx->port, 0x00);
         return ret;
 
     default:
@@ -303,61 +316,78 @@ static int32_t netconfig_service_tcp_server(uint8_t sn, uint16_t port) {
     }
 }
 
-static void netconfig_interrupt_init(void) {
-    NETCONFIG_INT_DDR &= (uint8_t)~(uint8_t)(1U << NETCONFIG_INT_BIT);
-    NETCONFIG_INT_PORT |= (uint8_t)(1U << NETCONFIG_INT_BIT);
-    EICRA = (uint8_t)((EICRA & (uint8_t)~0x03U) | 0x02U);
-    EIFR = (uint8_t)(1U << INTF0);
-    EIMSK |= (uint8_t)(1U << INT0);
+static uint8_t netconfig_service_interrupt_mask(void) {
+    return (uint8_t)(Sn_IR_CON | Sn_IR_RECV | Sn_IR_DISCON | Sn_IR_TIMEOUT);
 }
 
-static void netconfig_loopback_interrupt_enable(void) {
-    setIMR(IMR_SOCK(NETCONFIG_LOOPBACK_SOCKET));
-    setSn_IMR(NETCONFIG_LOOPBACK_SOCKET,
-              (uint8_t)(Sn_IR_CON | Sn_IR_RECV | Sn_IR_DISCON | Sn_IR_TIMEOUT));
-    setIR(IR_SOCK(NETCONFIG_LOOPBACK_SOCKET));
-    setSn_IR(NETCONFIG_LOOPBACK_SOCKET,
-             (uint8_t)(Sn_IR_CON | Sn_IR_RECV | Sn_IR_DISCON | Sn_IR_TIMEOUT));
+static void netconfig_refresh_interrupt_masks(void) {
+    uint8_t sn;
+    uint8_t global_mask = 0U;
+    netconfig_socket_ctx_t *ctx;
+
+    for (sn = 0U; sn < _WIZCHIP_SOCK_NUM_; sn += 1U) {
+        ctx = netconfig_get_socket_ctx(sn);
+        if (ctx != 0 && ctx->enabled != 0U) {
+            setSn_IMR(sn, netconfig_service_interrupt_mask());
+            setSn_IR(sn, netconfig_service_interrupt_mask());
+            global_mask |= IMR_SOCK(sn);
+        } else {
+            setSn_IMR(sn, 0x00U);
+        }
+    }
+
+    setIMR(global_mask);
+    if (global_mask != 0U) {
+        setIR(global_mask);
+    }
 }
 
-static void netconfig_loopback_interrupt_disable(void) {
-    setSn_IMR(NETCONFIG_LOOPBACK_SOCKET, 0x00U);
-    setIMR(0x00U);
-    setIR(IR_SOCK(NETCONFIG_LOOPBACK_SOCKET));
-    setSn_IR(NETCONFIG_LOOPBACK_SOCKET,
-             (uint8_t)(Sn_IR_CON | Sn_IR_RECV | Sn_IR_DISCON | Sn_IR_TIMEOUT));
-}
-
-static uint8_t netconfig_loopback_needs_service(void) {
+static uint8_t netconfig_socket_needs_service(uint8_t sn) {
     uint8_t socket_state;
+    netconfig_socket_ctx_t *ctx = netconfig_get_socket_ctx(sn);
 
-    if (netconfig_loopback_enabled == 0U) {
+    if (ctx == 0 || ctx->enabled == 0U) {
         return 0U;
     }
 
-    socket_state = getSn_SR(NETCONFIG_LOOPBACK_SOCKET);
+    socket_state = getSn_SR(sn);
     if (socket_state == SOCK_CLOSED || socket_state == SOCK_INIT || socket_state == SOCK_CLOSE_WAIT) {
         return 1U;
     }
 
-    if (netconfig_wiznet_irq_pending != 0U) {
+    if (wizchip_port_irq_is_pending() != 0U) {
         return 1U;
     }
 
-    if ((getIR() & IR_SOCK(NETCONFIG_LOOPBACK_SOCKET)) != 0U) {
+    if ((getIR() & IR_SOCK(sn)) != 0U) {
         return 1U;
     }
 
-    if ((getSn_IR(NETCONFIG_LOOPBACK_SOCKET) &
-         (uint8_t)(Sn_IR_CON | Sn_IR_RECV | Sn_IR_DISCON | Sn_IR_TIMEOUT)) != 0U) {
+    if ((getSn_IR(sn) & netconfig_service_interrupt_mask()) != 0U) {
         return 1U;
     }
 
     return 0U;
 }
 
-ISR(INT0_vect) {
-    netconfig_wiznet_irq_pending = 1U;
+static uint8_t netconfig_find_service_socket(uint8_t *sn_out) {
+    uint8_t i;
+    uint8_t sn;
+
+    if (sn_out == 0) {
+        return 0U;
+    }
+
+    for (i = 0U; i < _WIZCHIP_SOCK_NUM_; i += 1U) {
+        sn = (uint8_t)((netconfig_poll_cursor + i) % _WIZCHIP_SOCK_NUM_);
+        if (netconfig_socket_needs_service(sn) != 0U) {
+            *sn_out = sn;
+            netconfig_poll_cursor = (uint8_t)((sn + 1U) % _WIZCHIP_SOCK_NUM_);
+            return 1U;
+        }
+    }
+
+    return 0U;
 }
 
 static void netconfig_copy_from_wiznet(netconfig_info_t *dst, const wiz_NetInfo *src) {
@@ -376,78 +406,6 @@ static void netconfig_copy_to_wiznet(wiz_NetInfo *dst, const netconfig_info_t *s
     memcpy(dst->gw, src->gw, sizeof(dst->gw));
     memcpy(dst->dns, src->dns, sizeof(dst->dns));
     dst->dhcp = src->dhcp;
-}
-
-static void netconfig_cris_enter(void) {
-    netconfig_sreg = SREG;
-    cli();
-}
-
-static void netconfig_cris_exit(void) {
-    SREG = netconfig_sreg;
-}
-
-static uint8_t netconfig_spi_readbyte(void) {
-    return netconfig_spi_transfer(0x00U);
-}
-
-static void netconfig_spi_writebyte(uint8_t wb) {
-    (void)netconfig_spi_transfer(wb);
-}
-
-static void netconfig_spi_readburst(uint8_t *buf, uint16_t len) {
-    uint16_t i;
-
-    for (i = 0; i < len; i += 1U) {
-        buf[i] = netconfig_spi_readbyte();
-    }
-}
-
-static void netconfig_spi_writeburst(uint8_t *buf, uint16_t len) {
-    uint16_t i;
-
-    for (i = 0; i < len; i += 1U) {
-        netconfig_spi_writebyte(buf[i]);
-    }
-}
-
-void netconfig_cs_select(void) {
-    NETCONFIG_SPI_CS_PORT &= (uint8_t)~(uint8_t)(1U << NETCONFIG_SPI_CS_BIT);
-}
-
-void netconfig_cs_deselect(void) {
-    NETCONFIG_SPI_CS_PORT |= (uint8_t)(1U << NETCONFIG_SPI_CS_BIT);
-}
-
-void netconfig_spi_init(void) {
-    NETCONFIG_SPI_CS_DDR |= (uint8_t)(1U << NETCONFIG_SPI_CS_BIT);
-    NETCONFIG_SPI_MOSI_DDR |= (uint8_t)(1U << NETCONFIG_SPI_MOSI_BIT);
-    NETCONFIG_SPI_SCK_DDR |= (uint8_t)(1U << NETCONFIG_SPI_SCK_BIT);
-    NETCONFIG_SPI_MISO_DDR &= (uint8_t)~(uint8_t)(1U << NETCONFIG_SPI_MISO_BIT);
-
-    netconfig_cs_deselect();
-
-    SPCR = (uint8_t)((1U << SPE) | (1U << MSTR) | (1U << SPR0));
-    SPSR = 0;
-}
-
-void netconfig_wizchip_if_init(void) {
-    reg_wizchip_cris_cbfunc(netconfig_cris_enter, netconfig_cris_exit);
-    reg_wizchip_cs_cbfunc(netconfig_cs_select, netconfig_cs_deselect);
-    reg_wizchip_spi_cbfunc(netconfig_spi_readbyte, netconfig_spi_writebyte);
-    reg_wizchip_spiburst_cbfunc(netconfig_spi_readburst, netconfig_spi_writeburst);
-}
-
-uint8_t netconfig_spi_transfer(uint8_t tx) {
-    SPDR = tx;
-    while ((SPSR & (uint8_t)(1U << SPIF)) == 0U) {
-    }
-    netconfig_spi_xfer_count += 1U;
-    return SPDR;
-}
-
-uint32_t netconfig_spi_transfer_count(void) {
-    return netconfig_spi_xfer_count;
 }
 
 uint8_t netconfig_get_version(void) {
@@ -485,71 +443,107 @@ void netconfig_reg_read_buf(uint16_t addr, uint8_t *buf, uint8_t len) {
     WIZCHIP_READ_BUF(addr, buf, len);
 }
 
+void netconfig_enable_global_interrupts(void) {
+    wizchip_port_enable_global_interrupts();
+}
+
 int8_t netconfig_loopback_start(uint16_t port) {
-    if (port == 0U) {
-        return NETCONFIG_ERR_ARG;
-    }
-
-    netconfig_loopback_port = port;
-    netconfig_loopback_enabled = 1U;
-    netconfig_loopback_last_result = 1;
-    netconfig_reset_socket_ctx(NETCONFIG_LOOPBACK_SOCKET);
-
-    if (netconfig_interrupt_ready == 0U) {
-        netconfig_interrupt_init();
-        netconfig_interrupt_ready = 1U;
-    }
-    netconfig_wiznet_irq_pending = 1U;
-    netconfig_loopback_interrupt_enable();
-
-    close(NETCONFIG_LOOPBACK_SOCKET);
-    return NETCONFIG_OK;
+    return netconfig_service_start(NETCONFIG_LOOPBACK_SOCKET, NETCONFIG_SERVICE_TCP_LOOPBACK, port);
 }
 
 void netconfig_loopback_stop(void) {
-    netconfig_loopback_enabled = 0U;
-    netconfig_loopback_last_result = 0;
-    netconfig_wiznet_irq_pending = 0U;
-    netconfig_reset_socket_ctx(NETCONFIG_LOOPBACK_SOCKET);
-    if (netconfig_interrupt_ready != 0U) {
-        netconfig_loopback_interrupt_disable();
-    }
-    close(NETCONFIG_LOOPBACK_SOCKET);
+    netconfig_service_stop(NETCONFIG_LOOPBACK_SOCKET);
 }
 
-void netconfig_loopback_poll(void) {
-    uint8_t socket_ir;
-    uint8_t global_ir;
+int8_t netconfig_service_start(uint8_t sn, uint8_t service_type, uint16_t port) {
+    netconfig_socket_ctx_t *ctx = netconfig_get_socket_ctx(sn);
 
-    if (netconfig_loopback_needs_service() == 0U) {
+    if (ctx == 0 || port == 0U || service_type == NETCONFIG_SERVICE_NONE) {
+        return NETCONFIG_ERR_ARG;
+    }
+
+    netconfig_reset_socket_ctx(sn);
+    ctx->enabled = 1U;
+    ctx->service_type = service_type;
+    ctx->port = port;
+    ctx->last_result = 1;
+
+    if (netconfig_interrupt_ready == 0U) {
+        wizchip_port_interrupt_init();
+        netconfig_interrupt_ready = 1U;
+    }
+
+    wizchip_port_irq_set_pending();
+    netconfig_refresh_interrupt_masks();
+    close(sn);
+    return NETCONFIG_OK;
+}
+
+void netconfig_service_stop(uint8_t sn) {
+    netconfig_socket_ctx_t *ctx = netconfig_get_socket_ctx(sn);
+
+    if (ctx == 0) {
         return;
     }
 
-    netconfig_wiznet_irq_pending = 0U;
-    netconfig_loopback_last_result =
-        netconfig_service_tcp_server(NETCONFIG_LOOPBACK_SOCKET, netconfig_loopback_port);
+    wizchip_port_irq_clear_pending();
+    netconfig_reset_socket_ctx(sn);
+    netconfig_refresh_interrupt_masks();
+    close(sn);
+}
 
-    socket_ir = getSn_IR(NETCONFIG_LOOPBACK_SOCKET);
+void netconfig_poll(void) {
+    uint8_t sn;
+    uint8_t socket_ir;
+    uint8_t global_ir;
+    netconfig_socket_ctx_t *ctx;
+
+    if (netconfig_find_service_socket(&sn) == 0U) {
+        return;
+    }
+
+    ctx = netconfig_get_socket_ctx(sn);
+    if (ctx == 0) {
+        return;
+    }
+
+    wizchip_port_irq_clear_pending();
+    if (ctx->service_type == NETCONFIG_SERVICE_TCP_LOOPBACK) {
+        ctx->last_result = netconfig_service_tcp_server(sn);
+    }
+
+    socket_ir = getSn_IR(sn);
     if (socket_ir != 0U) {
-        setSn_IR(NETCONFIG_LOOPBACK_SOCKET, socket_ir);
+        setSn_IR(sn, socket_ir);
     }
 
     global_ir = getIR();
-    if ((global_ir & IR_SOCK(NETCONFIG_LOOPBACK_SOCKET)) != 0U) {
-        setIR(IR_SOCK(NETCONFIG_LOOPBACK_SOCKET));
+    if ((global_ir & IR_SOCK(sn)) != 0U) {
+        setIR(IR_SOCK(sn));
     }
 }
 
-void netconfig_loopback_get_status(netconfig_loopback_status_t *status) {
-    if (status == 0) {
+void netconfig_get_status(uint8_t sn, netconfig_service_status_t *status) {
+    netconfig_socket_ctx_t *ctx = netconfig_get_socket_ctx(sn);
+
+    if (status == 0 || ctx == 0) {
         return;
     }
 
-    status->enabled = netconfig_loopback_enabled;
-    status->socket_num = NETCONFIG_LOOPBACK_SOCKET;
-    status->socket_state = getSn_SR(NETCONFIG_LOOPBACK_SOCKET);
-    status->port = netconfig_loopback_port;
-    status->last_result = netconfig_loopback_last_result;
+    status->enabled = ctx->enabled;
+    status->service_type = ctx->service_type;
+    status->socket_num = sn;
+    status->socket_state = getSn_SR(sn);
+    status->port = ctx->port;
+    status->last_result = ctx->last_result;
+}
+
+void netconfig_loopback_poll(void) {
+    netconfig_poll();
+}
+
+void netconfig_loopback_get_status(netconfig_loopback_status_t *status) {
+    netconfig_get_status(NETCONFIG_LOOPBACK_SOCKET, status);
 }
 
 int8_t netconfig_chip_init(const netconfig_info_t *netinfo) {
