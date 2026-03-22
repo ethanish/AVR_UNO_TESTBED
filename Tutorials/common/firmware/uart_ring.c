@@ -20,11 +20,11 @@ void uart_init(uint32_t baud) {
     uint16_t ubrr;
 
     ubrr = (uint16_t)((F_CPU / (8UL * baud)) - 1UL);
-    UCSR0A = _BV(U2X0);
+    UCSR0A = (uint8_t)(1U << U2X0);
     UBRR0H = (uint8_t)(ubrr >> 8);
     UBRR0L = (uint8_t)(ubrr & 0xFF);
-    UCSR0B = _BV(RXEN0) | _BV(TXEN0) | _BV(RXCIE0);
-    UCSR0C = _BV(UCSZ01) | _BV(UCSZ00);
+    UCSR0B = (uint8_t)((1U << RXEN0) | (1U << TXEN0) | (1U << RXCIE0));
+    UCSR0C = (uint8_t)((1U << UCSZ01) | (1U << UCSZ00));
 }
 
 ISR(USART_RX_vect) {
@@ -67,7 +67,7 @@ uint16_t uart_rx_isr_count_snapshot(void) {
 }
 
 void uart_write_char(char c) {
-    while (!(UCSR0A & _BV(UDRE0))) {
+    while ((UCSR0A & (uint8_t)(1U << UDRE0)) == 0U) {
     }
     UDR0 = (uint8_t)c;
 }
