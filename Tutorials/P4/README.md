@@ -217,7 +217,3 @@ make -C Tutorials/P4 test-hw PORT=/dev/tty.usbmodemXXXX
 2. `SET GAIN KP 1400`
 3. `SET GAIN KI 120`
 4. 다시 `SET TARGET 200` 후 `GET RESP` 비교
-
-<video src="./Pulse_with_LED.MOV" controls width="400">
-  비디오를 지원하지 않는 브라우저입니다.
-</video>
