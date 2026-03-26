@@ -15,7 +15,8 @@ extern "C" {
 #define NETCONFIG_LINK_DOWN 0U
 #define NETCONFIG_LINK_UP 1U
 #define NETCONFIG_LOOPBACK_SOCKET 0U
-#define NETCONFIG_LOOPBACK_PORT 5000U
+#define NETCONFIG_LOOPBACK_PORT 4001U
+#define NETCONFIG_DEFAULT_SERVICE_COUNT 4U
 #define NETCONFIG_SERVICE_NONE 0U
 #define NETCONFIG_SERVICE_TCP_LOOPBACK 1U
 
@@ -57,6 +58,8 @@ void netconfig_reg_write(uint16_t addr, uint8_t value);
 void netconfig_reg_read_buf(uint16_t addr, uint8_t *buf, uint8_t len);
 int8_t netconfig_service_start(uint8_t sn, uint8_t service_type, uint16_t port);
 void netconfig_service_stop(uint8_t sn);
+int8_t netconfig_start_default_services(void);
+void netconfig_stop_default_services(void);
 void netconfig_poll(void);
 void netconfig_get_status(uint8_t sn, netconfig_service_status_t *status);
 int8_t netconfig_loopback_start(uint16_t port);
