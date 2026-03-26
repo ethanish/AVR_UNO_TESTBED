@@ -42,6 +42,7 @@ KEYS = (
     "TOL",
     "NEED",
     "PEAK",
+    "MIN",
     "OVERSHOOT",
     "SETTLED",
     "SETTLING_MS",
@@ -91,7 +92,11 @@ def draw_ui(port: str, baud: int, status: dict[str, str], last_rx: str, log: deq
         )
     )
     print("SET : TOL={TOL} NEED={NEED} CTRL_COUNT={CTRL_COUNT}".format(**status))
-    print("RESP: PEAK={PEAK} OVERSHOOT={OVERSHOOT} SETTLED={SETTLED} SETTLING_MS={SETTLING_MS}".format(**status))
+    print(
+        "RESP: PEAK={PEAK} MIN={MIN} OVERSHOOT={OVERSHOOT} SETTLED={SETTLED} SETTLING_MS={SETTLING_MS}".format(
+            **status
+        )
+    )
     print("STAT: UART_RX_ISR={UART_RX_ISR} TICK_MS={TICK_MS}".format(**status))
     print("-" * 78)
     print("Commands")

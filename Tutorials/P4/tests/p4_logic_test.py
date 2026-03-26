@@ -20,6 +20,8 @@ class P4Model:
         self.mode_auto = True
 
         self.peak = 0
+        self.min_meas = 0
+        self.start_meas = 0
         self.overshoot = 0
         self.settle_tol = settle_tol
         self.settle_need = settle_need
@@ -27,7 +29,9 @@ class P4Model:
         self.settled = False
 
     def reset_response(self):
+        self.start_meas = self.meas
         self.peak = self.meas
+        self.min_meas = self.meas
         self.overshoot = 0
         self.settle_count = 0
         self.settled = False
@@ -37,6 +41,7 @@ class P4Model:
         self.reset_response()
 
     def step(self):
+        step_up = self.target >= self.start_meas
         delta = self.duty - self.meas
         adjust = (self.alpha_pct * delta) // 100
         if adjust == 0 and delta != 0:
@@ -50,7 +55,11 @@ class P4Model:
             self.duty = clamp_u8(u)
 
         self.peak = max(self.peak, self.meas)
-        self.overshoot = max(0, self.peak - self.target)
+        self.min_meas = min(self.min_meas, self.meas)
+        if step_up:
+            self.overshoot = max(0, self.peak - self.target)
+        else:
+            self.overshoot = max(0, self.target - self.min_meas)
         err_abs = abs(self.target - self.meas)
         if err_abs <= self.settle_tol:
             self.settle_count += 1
@@ -83,6 +92,19 @@ def main() -> int:
     for _ in range(200):
         m.step()
     assert m.settled
+
+    m = P4Model(kp_q10=1200, ki_q10=90)
+    m.set_target(220)
+    for _ in range(220):
+        m.step()
+    high_meas = m.meas
+    assert high_meas >= 216
+    m.set_target(80)
+    for _ in range(220):
+        m.step()
+    assert abs(m.meas - 80) <= 4
+    assert m.min_meas <= high_meas
+    assert m.overshoot >= 0
 
     print("PASS: P4 PI control/response model checks")
     return 0

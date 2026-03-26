@@ -18,7 +18,7 @@
 #define TIMER1_OCR1A_1MS 249U
 
 #define CTRL_PERIOD_DEFAULT_MS 10U
-#define KP_Q10_DEFAULT 1024
+#define KP_Q10_DEFAULT 2048
 #define KI_Q10_DEFAULT 64
 #define I_ACC_LIMIT 4096L
 #define LPF_ALPHA_DEFAULT_PCT 25U
@@ -43,6 +43,8 @@ static uint8_t lpf_alpha_pct = LPF_ALPHA_DEFAULT_PCT;
 static uint32_t control_count = 0;
 
 static uint32_t resp_start_ms = 0;
+static uint8_t resp_start_meas = 0;
+static uint8_t resp_min = 0;
 static uint8_t resp_peak = 0;
 static uint8_t resp_overshoot = 0;
 static uint8_t resp_settle_tol = SETTLE_TOL_DEFAULT;
@@ -126,6 +128,8 @@ static void respond_err(const char *e) {
 
 static void response_reset(void) {
     resp_start_ms = snapshot_tick_ms();
+    resp_start_meas = meas_pwm;
+    resp_min = meas_pwm;
     resp_peak = meas_pwm;
     resp_overshoot = 0U;
     resp_settle_count = 0U;
@@ -135,14 +139,26 @@ static void response_reset(void) {
 
 static void response_update(void) {
     uint8_t err_abs;
+    bool step_up = target_pwm >= resp_start_meas;
 
     if (meas_pwm > resp_peak) {
         resp_peak = meas_pwm;
     }
-    if (resp_peak > target_pwm) {
-        resp_overshoot = (uint8_t)(resp_peak - target_pwm);
+    if (meas_pwm < resp_min) {
+        resp_min = meas_pwm;
+    }
+    if (step_up) {
+        if (resp_peak > target_pwm) {
+            resp_overshoot = (uint8_t)(resp_peak - target_pwm);
+        } else {
+            resp_overshoot = 0U;
+        }
     } else {
-        resp_overshoot = 0U;
+        if (resp_min < target_pwm) {
+            resp_overshoot = (uint8_t)(target_pwm - resp_min);
+        } else {
+            resp_overshoot = 0U;
+        }
     }
 
     if (meas_pwm >= target_pwm) {
@@ -240,8 +256,9 @@ static void respond_resp(void) {
     char msg[160];
     snprintf(msg,
              sizeof(msg),
-             "OK PEAK=%u OVERSHOOT=%u SETTLED=%u SETTLING_MS=%lu CTRL_COUNT=%lu",
+             "OK PEAK=%u MIN=%u OVERSHOOT=%u SETTLED=%u SETTLING_MS=%lu CTRL_COUNT=%lu",
              resp_peak,
+             resp_min,
              resp_overshoot,
              resp_settled ? 1U : 0U,
              (unsigned long)resp_settling_ms,
