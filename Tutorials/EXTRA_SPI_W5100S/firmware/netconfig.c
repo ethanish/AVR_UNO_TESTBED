@@ -23,6 +23,12 @@ static uint8_t netconfig_interrupt_ready = 0U;
 static uint8_t netconfig_poll_cursor = 0U;
 
 typedef struct {
+    uint8_t socket_num;
+    uint8_t service_type;
+    uint16_t port;
+} netconfig_service_init_t;
+
+typedef struct {
     uint8_t enabled;
     uint8_t service_type;
     uint16_t port;
@@ -35,6 +41,12 @@ typedef struct {
 } netconfig_socket_ctx_t;
 
 static netconfig_socket_ctx_t netconfig_socket_ctx[_WIZCHIP_SOCK_NUM_];
+static const netconfig_service_init_t netconfig_default_services[NETCONFIG_DEFAULT_SERVICE_COUNT] = {
+    {0U, NETCONFIG_SERVICE_TCP_LOOPBACK, NETCONFIG_LOOPBACK_PORT},
+    {1U, NETCONFIG_SERVICE_TCP_LOOPBACK, (uint16_t)(NETCONFIG_LOOPBACK_PORT + 1U)},
+    {2U, NETCONFIG_SERVICE_TCP_LOOPBACK, (uint16_t)(NETCONFIG_LOOPBACK_PORT + 2U)},
+    {3U, NETCONFIG_SERVICE_TCP_LOOPBACK, (uint16_t)(NETCONFIG_LOOPBACK_PORT + 3U)},
+};
 
 #define NETCONFIG_TCP_SERVICE_MAX_RX 64U
 #define NETCONFIG_TCP_SERVICE_MAX_TX 64U
@@ -536,6 +548,30 @@ void netconfig_get_status(uint8_t sn, netconfig_service_status_t *status) {
     status->socket_state = getSn_SR(sn);
     status->port = ctx->port;
     status->last_result = ctx->last_result;
+}
+
+int8_t netconfig_start_default_services(void) {
+    uint8_t i;
+    int8_t ret;
+
+    for (i = 0U; i < NETCONFIG_DEFAULT_SERVICE_COUNT; i += 1U) {
+        ret = netconfig_service_start(netconfig_default_services[i].socket_num,
+                                      netconfig_default_services[i].service_type,
+                                      netconfig_default_services[i].port);
+        if (ret != NETCONFIG_OK) {
+            return ret;
+        }
+    }
+
+    return NETCONFIG_OK;
+}
+
+void netconfig_stop_default_services(void) {
+    uint8_t i;
+
+    for (i = 0U; i < NETCONFIG_DEFAULT_SERVICE_COUNT; i += 1U) {
+        netconfig_service_stop(netconfig_default_services[i].socket_num);
+    }
 }
 
 void netconfig_loopback_poll(void) {

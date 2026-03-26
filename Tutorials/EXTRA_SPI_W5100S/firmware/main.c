@@ -11,10 +11,10 @@ int main(void) {
     netconfig_enable_global_interrupts();
 
     if (netconfig_status == NETCONFIG_OK) {
-        (void)netconfig_loopback_start(NETCONFIG_LOOPBACK_PORT);
+        (void)netconfig_start_default_services();
     }
 
     while (1) {
-        netconfig_loopback_poll();
+        netconfig_poll();
     }
 }
