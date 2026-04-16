@@ -8,6 +8,14 @@ def clamp_u8(v: int) -> int:
     return max(0, min(255, v))
 
 
+def u8_to_pct(value: int) -> int:
+    return ((value * 100) + 127) // 255
+
+
+def pct_to_u8(pct: int) -> int:
+    return ((pct * 255) + 50) // 100
+
+
 class P4Model:
     def __init__(self, kp_q10=1024, ki_q10=64, alpha_pct=25, settle_tol=4, settle_need=20):
         self.target = 128
@@ -70,6 +78,11 @@ class P4Model:
 
 
 def main() -> int:
+    assert pct_to_u8(0) == 0
+    assert pct_to_u8(100) == 255
+    assert abs(u8_to_pct(pct_to_u8(25)) - 25) <= 1
+    assert abs(u8_to_pct(pct_to_u8(50)) - 50) <= 1
+
     m = P4Model()
     m.set_target(180)
     for _ in range(400):

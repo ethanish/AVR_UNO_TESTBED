@@ -63,6 +63,14 @@ static uint8_t clamp_u8(long v) {
     return (uint8_t)v;
 }
 
+static uint8_t u8_to_pct(uint8_t value) {
+    return (uint8_t)(((uint16_t)value * 100U + 127U) / 255U);
+}
+
+static uint8_t pct_to_u8(uint8_t pct) {
+    return (uint8_t)(((uint16_t)pct * 255U + 50U) / 100U);
+}
+
 static void timer1_init_1ms_tick(void) {
     TCCR1A = 0;
     TCCR1B = _BV(WGM12) | _BV(CS11) | _BV(CS10);
@@ -231,6 +239,22 @@ static void respond_pwm(void) {
     uart_writeln(msg);
 }
 
+static void respond_power(void) {
+    char msg[160];
+    uint8_t target_pct = u8_to_pct(target_pwm);
+    uint8_t duty_pct = u8_to_pct(duty_pwm);
+    uint8_t meas_pct = u8_to_pct(meas_pwm);
+
+    snprintf(msg,
+             sizeof(msg),
+             "OK MODE=%s TARGET_PCT=%u DUTY_PCT=%u MEAS_PCT=%u LOAD=RESISTIVE",
+             mode_auto ? "AUTO" : "MANUAL",
+             target_pct,
+             duty_pct,
+             meas_pct);
+    uart_writeln(msg);
+}
+
 static void respond_ctrl(void) {
     char msg[160];
     uint8_t period;
@@ -324,6 +348,10 @@ static void handle_command(char *line) {
             respond_ctrl();
             return;
         }
+        if (strcmp(argv[1], "POWER") == 0) {
+            respond_power();
+            return;
+        }
         if (strcmp(argv[1], "RESP") == 0) {
             respond_resp();
             return;
@@ -377,6 +405,23 @@ static void handle_command(char *line) {
             return;
         }
 
+        if (strcmp(argv[1], "TARGET_PCT") == 0) {
+            if (!parse_long(argv[2], &v)) {
+                respond_err("BAD_ARG");
+                return;
+            }
+            if (v < 0L || v > 100L) {
+                respond_err("BAD_RANGE");
+                return;
+            }
+            target_pwm = pct_to_u8((uint8_t)v);
+            if (mode_auto) {
+                response_reset();
+            }
+            respond_power();
+            return;
+        }
+
         if (strcmp(argv[1], "DUTY") == 0) {
             if (!parse_long(argv[2], &v)) {
                 respond_err("BAD_ARG");
@@ -390,6 +435,22 @@ static void handle_command(char *line) {
             apply_pwm((uint8_t)v);
             response_reset();
             respond_pwm();
+            return;
+        }
+
+        if (strcmp(argv[1], "POWER") == 0) {
+            if (!parse_long(argv[2], &v)) {
+                respond_err("BAD_ARG");
+                return;
+            }
+            if (v < 0L || v > 100L) {
+                respond_err("BAD_RANGE");
+                return;
+            }
+            mode_auto = false;
+            apply_pwm(pct_to_u8((uint8_t)v));
+            response_reset();
+            respond_power();
             return;
         }
 

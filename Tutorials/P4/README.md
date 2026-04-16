@@ -6,6 +6,7 @@
 
 ## Scope Implemented
 - Timer2 Fast PWM 출력 (`OC2A`, Arduino D11/PB3)
+- 퍼센트 기반 전력 제어 인터페이스 (`SET POWER`, `GET POWER`, `SET TARGET_PCT`)
 - Timer1 1ms tick + 주기 제어 루프 (기본 10ms)
 - PI 제어기 (`KP_Q10`, `KI_Q10`, 고정소수점)
 - 1차 저역통과 모델 기반 측정값(`MEAS`) 갱신
@@ -17,9 +18,12 @@
 - `VERSION` -> `OK VERSION=P4-1.0`
 - `GET STAT` -> `UART_RX_ISR`, `TICK_MS`, `CTRL_COUNT`
 - `GET PWM` -> `MODE`, `TARGET`, `DUTY`, `MEAS`
+- `GET POWER` -> percent-based power view (`TARGET_PCT`, `DUTY_PCT`, `MEAS_PCT`)
 - `GET CTRL` -> gain/period/filter/settle params
 - `GET RESP` -> response metrics (`PEAK`, `MIN`, `OVERSHOOT`, `SETTLED`, `SETTLING_MS`)
 - `SET MODE AUTO|MANUAL`
+- `SET POWER <0..100>` (manual mode, resistive-load power percent)
+- `SET TARGET_PCT <0..100>`
 - `SET TARGET <0..255>`
 - `SET DUTY <0..255>` (manual mode)
 - `SET GAIN KP <0..8192>`
@@ -46,10 +50,22 @@
   - 중간값 예: `128`은 대략 50% duty에 해당합니다.
   - 코드에서는 실제 PWM 레지스터 `OCR2A`에 들어가는 값입니다.
 
+- `POWER`:
+  - P4에서 추가한 "전력 제어 관점" 명령 레이어입니다.
+  - 사람이 보기 쉬운 `0..100%` 단위로 PWM 출력을 다루게 해줍니다.
+  - 내부적으로는 `%` 값을 `DUTY(0..255)`로 변환해서 같은 PWM 하드웨어를 사용합니다.
+  - `SET POWER 25`는 대략 25% 평균 전력을 인가하는 개념으로 볼 수 있습니다.
+  - 여기서의 전력 해석은 LED, 히터, 저항 같은 "저항성 부하(resistive load)"를 기준으로 한 단순화 모델입니다.
+
 - `TARGET`:
   - 제어기가 도달하려는 목표값입니다.
   - AUTO 모드에서는 제어기가 `MEAS`를 이 값에 가깝게 만들려고 `DUTY`를 자동 조정합니다.
   - MANUAL 모드에서는 목표값을 바꿔도 PWM 출력은 자동으로 따라가지 않습니다.
+
+- `TARGET_PCT`:
+  - `TARGET`의 퍼센트 표현입니다.
+  - raw 값 `0..255` 대신 `0..100%` 기준으로 목표를 설정하고 싶을 때 사용합니다.
+  - 예를 들어 `SET TARGET_PCT 60`은 약 60% 레벨을 목표로 잡는 뜻입니다.
 
 - `MEAS`:
   - measurement의 약자이며, 제어기가 현재 출력 상태를 "측정했다고 가정하는 값"입니다.
@@ -153,6 +169,10 @@
 - `GET PWM`:
   - 현재 제어 모드와 목표값, 실제 PWM 출력값, 내부 측정값을 한 줄로 확인하는 명령입니다.
 
+- `GET POWER`:
+  - 위 상태를 `% power` 관점으로 다시 보여주는 명령입니다.
+  - raw `DUTY` 값보다 "평균 출력 세기"를 직관적으로 보고 싶을 때 유용합니다.
+
 - `GET CTRL`:
   - 현재 튜닝 파라미터와 제어 설정을 확인하는 명령입니다.
 
@@ -163,6 +183,48 @@
 - `RESET RESP`:
   - 응답 지표 기록을 현재 시점 기준으로 다시 시작합니다.
   - 새 목표값을 주기 전 응답 비교를 깔끔하게 할 때 사용합니다.
+
+## Recommended Example
+
+### Why power control is a better fit than motor control here
+- 현재 P4는 센서 피드백이 없는 내부 모델 제어 데모입니다.
+- 이 구조에서는 모터 속도/위치 제어보다 "평균 전력 조절" 예시가 더 자연스럽습니다.
+- LED 밝기 제어, 저항 부하 가열량 제어, 소형 램프 밝기 제어처럼 PWM duty가 바로 평균 출력 세기로 해석되는 예제가 잘 맞습니다.
+
+### Recommended hardware example
+- 가장 간단한 데모:
+  - `D11 -> 220Ω~1kΩ 저항 -> LED -> GND`
+- 전력 제어 느낌을 더 잘 보여주는 예:
+  - `D11 -> 게이트 저항 -> N-MOSFET gate`
+  - `5V -> 저항성 부하(소형 램프/저항) -> MOSFET drain`
+  - `MOSFET source -> GND`
+- 주의:
+  - Arduino 핀에서 부하 전력을 직접 공급하지 말고, 실제 부하는 MOSFET 같은 스위칭 소자를 통해 구동하는 편이 안전합니다.
+  - 유도성 부하(모터, 릴레이)는 플라이백 다이오드 등 추가 보호회로가 필요합니다.
+
+### Manual power control demo
+1. `SET MODE MANUAL`
+2. `SET POWER 0`
+3. `GET POWER`
+4. `SET POWER 25`
+5. `SET POWER 50`
+6. `SET POWER 75`
+7. `SET POWER 100`
+
+기대 결과:
+- LED라면 밝기가 단계적으로 증가합니다.
+- 저항성 부하라면 평균 인가 전력이 단계적으로 증가하는 개념으로 해석할 수 있습니다.
+
+### Auto power target demo
+1. `SET MODE AUTO`
+2. `RESET RESP`
+3. `SET TARGET_PCT 70`
+4. 1~2초 뒤 `GET POWER`
+5. `GET RESP`
+
+기대 결과:
+- `DUTY_PCT`, `MEAS_PCT`가 `TARGET_PCT` 근처로 이동합니다.
+- 내부 모델 기준으로 `SETTLED=1`이 되면 목표 전력 레벨에 수렴했다고 볼 수 있습니다.
 
 ## Inheritance Base (from P1/P2/P3)
 P4는 공통 UART/CLI 계층을 재사용합니다.
@@ -185,10 +247,10 @@ make -C Tutorials/P4 test-hw PORT=/dev/tty.usbmodemXXXX
 이 단계는 "PWM 출력 핀(D11)이 실제로 바뀌는지" 확인합니다.
 
 1. `SET MODE MANUAL`
-2. `SET DUTY 0`
-3. `SET DUTY 64`
-4. `SET DUTY 128`
-5. `SET DUTY 255`
+2. `SET POWER 0`
+3. `SET POWER 25`
+4. `SET POWER 50`
+5. `SET POWER 100`
 
 기대 결과:
 - LED 밝기가 단계적으로 증가/감소하면 PWM 출력은 정상입니다.
@@ -200,11 +262,12 @@ make -C Tutorials/P4 test-hw PORT=/dev/tty.usbmodemXXXX
 1. `GET PWM`, `GET CTRL`, `GET RESP`
 2. `SET MODE AUTO`
 3. `RESET RESP`
-4. `SET TARGET 200`
-5. 1~2초 뒤 `GET PWM`, `GET RESP`
+4. `SET TARGET_PCT 70`
+5. 1~2초 뒤 `GET PWM`, `GET POWER`, `GET RESP`
 
 기대 결과:
 - `GET PWM`에서 `MEAS`가 `TARGET` 근처로 이동
+- `GET POWER`에서 `MEAS_PCT`가 `TARGET_PCT` 근처로 이동
 - `GET RESP`에서 `SETTLED=1`
 
 주의:

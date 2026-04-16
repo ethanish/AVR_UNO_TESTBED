@@ -12,10 +12,13 @@ from collections import deque
 
 COMMAND_HELP = [
     "GET PWM                    -> mode/target/duty/meas",
+    "GET POWER                  -> percent-based power view",
     "GET CTRL                   -> KP/KI/LPF/period/settle cfg",
     "GET RESP                   -> peak/overshoot/settling",
     "GET STAT                   -> UART ISR/tick/control count",
     "SET MODE AUTO|MANUAL",
+    "SET POWER <0..100>",
+    "SET TARGET_PCT <0..100>",
     "SET TARGET <0..255>",
     "SET DUTY <0..255>",
     "SET GAIN KP <0..8192>",
@@ -31,6 +34,9 @@ COMMAND_HELP = [
 
 KEYS = (
     "MODE",
+    "TARGET_PCT",
+    "DUTY_PCT",
+    "MEAS_PCT",
     "TARGET",
     "DUTY",
     "MEAS",
@@ -86,6 +92,7 @@ def draw_ui(port: str, baud: int, status: dict[str, str], last_rx: str, log: deq
     print("P4 PWM/PI Interactive Testbed")
     print(f"Port: {port}  Baud: {baud}")
     print("PWM : MODE={MODE} TARGET={TARGET} DUTY={DUTY} MEAS={MEAS}".format(**status))
+    print("PWR : TARGET={TARGET_PCT}% DUTY={DUTY_PCT}% MEAS={MEAS_PCT}%".format(**status))
     print(
         "CTRL: KP={KP_Q10} KI={KI_Q10} I_ACC={I_ACC} LPF={LPF_PCT}% PERIOD={PERIOD_MS}ms".format(
             **status
@@ -126,6 +133,7 @@ def send_cmd(ser, log: deque[str], cmd: str):
 
 def one_shot_refresh(ser, log: deque[str]):
     send_cmd(ser, log, "GET PWM")
+    send_cmd(ser, log, "GET POWER")
     send_cmd(ser, log, "GET CTRL")
     send_cmd(ser, log, "GET RESP")
     send_cmd(ser, log, "GET STAT")
